@@ -46,6 +46,7 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
         onSelect: (index) => setState(() => selected = index),
         onFilter: (value) => setState(() => filter = value),
         onQuery: (value) => setState(() => query = value),
+        onReanalyzeAll: c.busy ? null : () => c.reanalyzeAllNeedsReviewWithLlm(),
       );
       final detail = _DetailPanel(
         item: current,
@@ -59,6 +60,7 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
             : () async {
                 await c.exporter.exportLegacy(c.report!);
               },
+        onReanalyzeLlm: (item) => c.reanalyzeItemWithLlm(item),
       );
       if (narrow) return list;
       return Row(children: [Expanded(child: list), const SizedBox(width: 12), Expanded(child: detail)]);
@@ -74,11 +76,38 @@ class _CitationList extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final ValueChanged<String> onFilter;
   final ValueChanged<String> onQuery;
-  const _CitationList({required this.items, required this.selected, required this.filter, required this.query, required this.onSelect, required this.onFilter, required this.onQuery});
+  final VoidCallback? onReanalyzeAll;
+  const _CitationList({
+    required this.items,
+    required this.selected,
+    required this.filter,
+    required this.query,
+    required this.onSelect,
+    required this.onFilter,
+    required this.onQuery,
+    this.onReanalyzeAll,
+  });
   @override
   Widget build(BuildContext context) => _Panel(
     child: Column(children: [
-      _PanelHeader(title: 'Danh sách trích dẫn', count: items.length),
+      _PanelHeader(
+        title: 'Danh sách trích dẫn',
+        count: items.length,
+        action: onReanalyzeAll != null
+            ? Tooltip(
+                message: 'Dùng LLM phân tích lại tất cả mục cần xem lại',
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFC4B5FD),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                  onPressed: onReanalyzeAll,
+                  icon: const Icon(Icons.auto_awesome, size: 14),
+                  label: const Text('Phân tích LLM', style: TextStyle(fontSize: 11)),
+                ),
+              )
+            : null,
+      ),
       Padding(padding: const EdgeInsets.all(10), child: Row(children: [
         Expanded(child: TextField(onChanged: onQuery, decoration: const InputDecoration(prefixIcon: Icon(Icons.search, size: 18), hintText: 'Lọc title, tác giả…', isDense: true, border: OutlineInputBorder()))),
         const SizedBox(width: 8),
@@ -129,7 +158,8 @@ class _DetailPanel extends StatelessWidget {
   final String? reportJson;
   final ValueChanged<bool> onTabChanged;
   final Future<void> Function()? onSave;
-  const _DetailPanel({required this.item, required this.showJson, required this.reportJson, required this.onTabChanged, required this.onSave});
+  final Future<void> Function(AuditResultItem item)? onReanalyzeLlm;
+  const _DetailPanel({required this.item, required this.showJson, required this.reportJson, required this.onTabChanged, required this.onSave, this.onReanalyzeLlm});
   @override
   Widget build(BuildContext context) => _Panel(child: Column(children: [
     Row(children: [
@@ -138,7 +168,7 @@ class _DetailPanel extends StatelessWidget {
       if (showJson && reportJson != null) IconButton(tooltip: 'Sao chép JSON', onPressed: () => Clipboard.setData(ClipboardData(text: reportJson!)), icon: const Icon(Icons.content_copy, size: 18)),
       if (showJson && onSave != null) IconButton(tooltip: 'Lưu JSON', onPressed: onSave, icon: const Icon(Icons.save_alt, size: 18)),
     ]), const Divider(height: 1),
-    Expanded(child: showJson ? _JsonView(json: reportJson) : EvidencePanel(item: item)),
+    Expanded(child: showJson ? _JsonView(json: reportJson) : EvidencePanel(item: item, onReanalyzeLlm: onReanalyzeLlm)),
   ]));
 }
 
@@ -150,7 +180,25 @@ class _JsonView extends StatelessWidget {
 }
 
 class _Panel extends StatelessWidget { final Widget child; const _Panel({required this.child}); @override Widget build(BuildContext context) => Material(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(6), child: Container(decoration: BoxDecoration(border: Border.all(color: const Color(0xFF334155)), borderRadius: BorderRadius.circular(6)), child: child)); }
-class _PanelHeader extends StatelessWidget { final String title; final int count; const _PanelHeader({required this.title, required this.count}); @override Widget build(BuildContext context) => Container(height: 42, padding: const EdgeInsets.symmetric(horizontal: 12), alignment: Alignment.centerLeft, color: const Color(0xFF162032), child: Row(children: [Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)), const SizedBox(width: 8), _StatusChip(status: '$count mục', color: const Color(0xFF94A3B8))])); }
+class _PanelHeader extends StatelessWidget {
+  final String title;
+  final int count;
+  final Widget? action;
+  const _PanelHeader({required this.title, required this.count, this.action});
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 42,
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    alignment: Alignment.centerLeft,
+    color: const Color(0xFF162032),
+    child: Row(children: [
+      Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+      const SizedBox(width: 8),
+      _StatusChip(status: '$count mục', color: const Color(0xFF94A3B8)),
+      if (action != null) ...[const Spacer(), action!],
+    ]),
+  );
+}
 class _Tab extends StatelessWidget { final String label; final bool active; final VoidCallback onTap; const _Tab({required this.label, required this.active, required this.onTap}); @override Widget build(BuildContext context) => TextButton(onPressed: onTap, style: TextButton.styleFrom(foregroundColor: active ? const Color(0xFFF8FAFC) : const Color(0xFF94A3B8)), child: Text(label)); }
 class _StatusChip extends StatelessWidget { final String status; final Color color; const _StatusChip({required this.status, required this.color}); @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: color.withValues(alpha: .12), border: Border.all(color: color.withValues(alpha: .45)), borderRadius: BorderRadius.circular(4)), child: Text(_statusLabel(status), style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600))); }
 Color _statusColor(String status) => switch (status) { 'verified' => const Color(0xFF4ADE80), 'mismatch' => const Color(0xFFFBBF24), 'error' => const Color(0xFFF87171), 'needs_review' => const Color(0xFFC4B5FD), 'running' => const Color(0xFF60A5FA), _ => const Color(0xFF94A3B8) };

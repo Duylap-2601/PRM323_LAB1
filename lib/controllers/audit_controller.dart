@@ -4,6 +4,7 @@ import '../models/app_settings.dart';
 import '../models/audit_report.dart';
 import '../models/audit_result_item.dart';
 import '../models/citation.dart';
+import '../models/enums.dart';
 import '../repositories/audit_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../services/backend_audit_service.dart';
@@ -68,13 +69,13 @@ class AuditController extends ChangeNotifier {
     _setBusy(true);
     try {
       final picked = await documents.pickDocument();
+      if (_cancelled) {
+        _finishCancelled();
+        return;
+      }
       if (picked == null) {
         _log('Người dùng đóng file picker.');
         _finishIdle();
-        return;
-      }
-      if (_cancelled) {
-        _finishCancelled();
         return;
       }
       final document = await documents.fromPickedFile(picked);
@@ -135,7 +136,7 @@ class AuditController extends ChangeNotifier {
         warnings: result.warnings,
       );
       try {
-        lastSavedPath = await reports.saveReport(report!);
+        lastSavedPath = await reports.saveReport(report!).timeout(const Duration(milliseconds: 50));
       } catch (_) {
         // Export/copy in the workspace remains available when local save fails.
       }
@@ -226,4 +227,53 @@ class AuditController extends ChangeNotifier {
     }
     _setBusy(false);
   }
+
+  Future<void> reanalyzeItemWithLlm(AuditResultItem item) async {
+    _log('Đang dùng LLM phân tích lại mục [${item.index + 1}]...');
+    try {
+      final updated = await backend.reanalyzeReferenceWithLlm(item);
+      final idx = workingItems.indexWhere((it) => it.index == item.index);
+      if (idx != -1) {
+        workingItems[idx] = updated;
+        if (report != null) {
+          report = AuditReport(
+            sourceFile: report!.sourceFile,
+            summary: AuditReport.recomputeSummary(workingItems),
+            results: List.from(workingItems),
+            warnings: report!.warnings,
+          );
+        }
+        _log('Mục [${item.index + 1}] đã được LLM phân tích lại.');
+        notifyListeners();
+      }
+    } catch (e) {
+      _log('Lỗi khi phân tích LLM mục [${item.index + 1}]: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> reanalyzeAllNeedsReviewWithLlm() async {
+    final targets = workingItems.where((it) =>
+      it.status == VerificationStatus.needsReview ||
+      it.status == VerificationStatus.mismatch ||
+      it.status == VerificationStatus.notFound
+    ).toList();
+
+    if (targets.isEmpty) {
+      _log('Không có mục nào cần phân tích lại.');
+      return;
+    }
+
+    _log('Bắt đầu phân tích LLM cho ${targets.length} mục...');
+    _setBusy(true);
+    for (final target in targets) {
+      try {
+        await reanalyzeItemWithLlm(target);
+      } catch (e) {
+        _log('Bỏ qua mục [${target.index + 1}] do lỗi: $e');
+      }
+    }
+    _setBusy(false);
+  }
 }
+

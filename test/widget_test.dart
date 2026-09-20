@@ -57,6 +57,7 @@ void main() {
     expect(controller.readyToAnalyze, isTrue);
     await tester.tap(find.text('Bắt đầu phân tích'));
     await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 100));
     expect(controller.workingItems, isNotEmpty);
     expect(controller.report, isNotNull);
     expect(find.text('Danh sách trích dẫn'), findsOneWidget);

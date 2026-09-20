@@ -8,6 +8,7 @@ import '../core/environment.dart';
 import '../models/audit_result_item.dart';
 import '../models/citation.dart';
 import '../models/enums.dart';
+import '../models/evidence.dart';
 
 class BackendRunResult {
   final String sourceLabel;
@@ -33,8 +34,16 @@ class BackendAuditService {
   http.Client? _activeClient;
   String? _activeDocumentId;
 
-  BackendAuditService({Uri? baseUri})
-      : baseUri = _withTrailingSlash(
+  final Duration pollInterval;
+  final Duration pollTimeout;
+  final http.Client? customClient;
+
+  BackendAuditService({
+    Uri? baseUri,
+    this.pollInterval = const Duration(seconds: 2),
+    this.pollTimeout = const Duration(minutes: 5),
+    this.customClient,
+  }) : baseUri = _withTrailingSlash(
           baseUri ?? Uri.parse(Environment.backendBaseUrl),
         );
 
@@ -50,7 +59,7 @@ class BackendAuditService {
     required Uint8List bytes,
     required void Function(String phase, String message) onProgress,
   }) async {
-    _activeClient = http.Client();
+    _activeClient = customClient ?? http.Client();
     try {
       final health = await _activeClient!.get(_healthUri, headers: _headers);
       _decodeHealth(health.statusCode, health.body);
@@ -68,7 +77,9 @@ class BackendAuditService {
       }
       return BackendUpload(documentId: _activeDocumentId!, filename: filename);
     } finally {
-      _activeClient?.close();
+      if (customClient == null) {
+        _activeClient?.close();
+      }
       _activeClient = null;
     }
   }
@@ -78,24 +89,52 @@ class BackendAuditService {
     required void Function(String phase, String message) onProgress,
   }) async {
     _activeDocumentId = upload.documentId;
-    _activeClient = http.Client();
+    _activeClient = customClient ?? http.Client();
+    final client = _activeClient!;
     try {
       onProgress('analyzing', 'Máy chủ đang đọc PDF và xác minh references…');
-      final analyze = await _activeClient!.post(
+      final analyzeResp = await client.post(
         baseUri.resolve('documents/$_activeDocumentId/analyze'),
         headers: _headers,
       );
-      _decode(analyze.statusCode, analyze.body);
+      final analyzeJson = _decode(analyzeResp.statusCode, analyzeResp.body);
+
+      var status = analyzeJson['status']?.toString() ?? 'processing';
+      final startTime = DateTime.now();
+
+      // Poll status if backend returned non-terminal status
+      while (status == 'uploaded' || status == 'processing') {
+        if (DateTime.now().difference(startTime) > pollTimeout) {
+          throw StateError('Thao tác quá thời gian chờ (timeout $pollTimeout).');
+        }
+        await Future.delayed(pollInterval);
+        final statusResp = await client.get(
+          baseUri.resolve('documents/$_activeDocumentId/status'),
+          headers: _headers,
+        );
+        final statusJson = _decode(statusResp.statusCode, statusResp.body);
+        status = statusJson['status']?.toString() ?? 'processing';
+
+        if (status == 'failed') {
+          final err = statusJson['error']?.toString() ?? 'Lỗi không xác định.';
+          throw StateError('Máy chủ xử lý thất bại: $err');
+        }
+        if (status == 'cancelled') {
+          throw StateError('Quá trình phân tích document đã bị hủy.');
+        }
+      }
 
       onProgress('building_report', 'Đang tải kết quả xác minh…');
-      final reportResponse = await _activeClient!.get(
+      final reportResponse = await client.get(
         baseUri.resolve('documents/$_activeDocumentId/report'),
         headers: _headers,
       );
       final report = _decode(reportResponse.statusCode, reportResponse.body);
       return _mapReport(upload.filename, report);
     } finally {
-      _activeClient?.close();
+      if (customClient == null) {
+        _activeClient?.close();
+      }
       _activeClient = null;
       _activeDocumentId = null;
     }
@@ -103,9 +142,10 @@ class BackendAuditService {
 
   void cancel() {
     final documentId = _activeDocumentId;
-    _activeClient?.close();
+    if (customClient == null) {
+      _activeClient?.close();
+    }
     if (documentId != null) {
-      // Best effort: the client is already closed, so cancellation must use a new request.
       unawaited(
         http.post(
           baseUri.resolve('documents/$documentId/cancel'),
@@ -129,7 +169,17 @@ class BackendAuditService {
     }
     final json = decoded is Map ? Map<String, dynamic>.from(decoded) : <String, dynamic>{};
     if (statusCode < 200 || statusCode >= 300) {
-      throw StateError(json['message'] ?? 'Máy chủ trả HTTP $statusCode.');
+      String msg = 'Máy chủ trả HTTP $statusCode.';
+      if (json['message'] is String && (json['message'] as String).isNotEmpty) {
+        msg = json['message'] as String;
+      } else if (json['detail'] is String && (json['detail'] as String).isNotEmpty) {
+        msg = json['detail'] as String;
+      } else if (json['detail'] is Map && json['detail']['message'] is String) {
+        msg = json['detail']['message'] as String;
+      } else if (json['error'] is String && (json['error'] as String).isNotEmpty) {
+        msg = json['error'] as String;
+      }
+      throw StateError(msg);
     }
     return json;
   }
@@ -172,6 +222,10 @@ class BackendAuditService {
           : null;
       final doi = reference['doi']?.toString();
       final url = reference['url']?.toString();
+      final evidence = _evidenceFromValidation(
+        reference: reference,
+        validation: validation,
+      );
       final metadata = CitationMetadata(
         index: index,
         raw: reference['raw']?.toString() ?? '',
@@ -202,6 +256,12 @@ class BackendAuditService {
             : status == VerificationStatus.mismatch
                 ? false
                 : null,
+        matchedEvidenceId: evidence.isNotEmpty ? evidence.first.id : null,
+        evidence: evidence,
+        fieldComparisons: _fieldComparisonsFromValidation(
+          reference: reference,
+          validation: validation,
+        ),
       ));
     }
     final issues = report['issues'] is List
@@ -218,4 +278,195 @@ class BackendAuditService {
         'AMBIGUOUS' => 'Có nhiều nguồn gần khớp, cần xem lại.',
         _ => 'Máy chủ chưa trả kết luận.',
       };
+
+  Future<AuditResultItem> reanalyzeReferenceWithLlm(AuditResultItem item) async {
+    final uri = baseUri.resolve('documents/reanalyze_reference');
+    final payload = jsonEncode({
+      'reference_id': 'ref-${item.index + 1}',
+      'raw': item.citation,
+      'title': item.metadata.title,
+      'authors': item.metadata.authors != null ? [item.metadata.authors!] : [],
+      'year': int.tryParse(item.metadata.year ?? ''),
+      'doi': item.metadata.doi,
+    });
+
+    final client = customClient ?? http.Client();
+    final res = await client.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: payload,
+    ).timeout(const Duration(seconds: 25));
+
+
+    final json = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw StateError(json['message']?.toString() ?? json['detail']?.toString() ?? 'Lỗi khi gọi LLM re-analyze');
+    }
+
+    final val = json['validation'] as Map<String, dynamic>? ?? {};
+    final ref = json['reference'] as Map<String, dynamic>? ?? {};
+    final llmReasoning = json['llm_reasoning']?.toString();
+    final llmConclusion = json['llm_conclusion']?.toString();
+    final serverStatus = val['status']?.toString() ?? 'NOT_FOUND';
+    final notes = val['notes'] is List
+        ? (val['notes'] as List).map((e) => e.toString()).toList()
+        : <String>[];
+    if (llmReasoning != null && llmReasoning.isNotEmpty) {
+      notes.insert(0, llmReasoning);
+    }
+    if (llmConclusion != null && llmConclusion.isNotEmpty) {
+      notes.insert(0, 'LLM: $llmConclusion');
+    }
+
+    final status = switch (serverStatus) {
+      'VALID' => VerificationStatus.verified,
+      'MISMATCH' => VerificationStatus.mismatch,
+      'NOT_FOUND' => VerificationStatus.notFound,
+      _ => VerificationStatus.needsReview,
+    };
+
+    final authors = ref['authors'] is List && (ref['authors'] as List).isNotEmpty
+        ? (ref['authors'] as List).join(', ')
+        : item.metadata.authors;
+    final title = ref['title']?.toString() ?? item.metadata.title;
+    final year = ref['year']?.toString() ?? item.metadata.year;
+    final doi = ref['doi']?.toString() ?? item.metadata.doi;
+
+    final updatedMetadata = item.metadata.copyWith(
+      title: title,
+      authors: authors,
+      year: year,
+      doi: doi,
+      metadataMethod: 'llm_reanalysis',
+    );
+    final evidence = [
+      for (final e in (json['llm_evidence'] as List? ?? []))
+        if (e is Map) Evidence.fromJson(Map<String, dynamic>.from(e)),
+      ..._evidenceFromValidation(reference: ref, validation: val),
+    ];
+    final reasonParts = [
+      if (llmConclusion != null && llmConclusion.isNotEmpty)
+        'LLM: $llmConclusion',
+      if (llmReasoning != null && llmReasoning.isNotEmpty)
+        llmReasoning,
+      if (notes.isEmpty) _statusMessage(serverStatus) else notes.join(' · '),
+    ];
+
+    assert(reasonParts.isNotEmpty);
+
+    return item.copyWith(
+      status: status,
+      pred: status == VerificationStatus.verified ? true : false,
+      processingState: ProcessingState.completed,
+      reason: notes.isEmpty ? _statusMessage(serverStatus) : notes.join(' · '),
+      metadata: updatedMetadata,
+      found: status != VerificationStatus.notFound,
+      match: status == VerificationStatus.verified ? true : (status == VerificationStatus.mismatch ? false : null),
+      matchedEvidenceId: evidence.isNotEmpty ? evidence.first.id : null,
+      evidence: evidence,
+      fieldComparisons: _fieldComparisonsFromValidation(
+        reference: ref,
+        validation: val,
+      ),
+    );
+  }
+
+  List<Evidence> _evidenceFromValidation({
+    required Map<String, dynamic> reference,
+    required Map<String, dynamic> validation,
+  }) {
+    if (validation.isEmpty) return const [];
+    final status = validation['status']?.toString() ?? 'UNKNOWN';
+    final notes = validation['notes'] is List
+        ? (validation['notes'] as List).map((e) => e.toString()).toList()
+        : const <String>[];
+    final doi = reference['doi']?.toString();
+    final refUrl = reference['url']?.toString();
+    final provider = notes.any((note) => note.toLowerCase().contains('openalex'))
+        ? 'openalex'
+        : notes.any((note) => note.toLowerCase().contains('url'))
+            ? 'url'
+            : 'crossref';
+    final id = doi != null && doi.isNotEmpty
+        ? doi
+        : '${reference['id']?.toString() ?? 'reference'}-$provider-$status';
+    final url = doi != null && doi.isNotEmpty
+        ? 'https://doi.org/$doi'
+        : refUrl;
+
+    return [
+      Evidence(
+        id: id,
+        provider: provider,
+        url: url,
+        metadata: {
+          'status': status,
+          'confidence': validation['confidence'],
+          'title_score': validation['title_score'],
+          'author_score': validation['author_score'],
+          'year_match': validation['year_match'],
+          'doi_valid': validation['doi_valid'],
+          'title': reference['title'],
+          'authors': reference['authors'],
+          'year': reference['year'],
+          'notes': notes,
+        },
+        snippet: notes.isEmpty ? _statusMessage(status) : notes.join(' · '),
+      ),
+    ];
+  }
+
+  List<FieldComparison> _fieldComparisonsFromValidation({
+    required Map<String, dynamic> reference,
+    required Map<String, dynamic> validation,
+  }) {
+    if (validation.isEmpty) return const [];
+
+    String scoreResult(dynamic score) {
+      final value = score is num
+          ? score.toDouble()
+          : double.tryParse(score?.toString() ?? '');
+      if (value == null) return 'unknown';
+      if (value >= 80) return 'match';
+      if (value < 60) return 'mismatch';
+      return 'unknown';
+    }
+
+    String boolResult(dynamic value) {
+      if (value is bool) return value ? 'match' : 'mismatch';
+      return 'unknown';
+    }
+
+    return [
+      FieldComparison(
+        field: 'title',
+        citationValue: reference['title']?.toString(),
+        candidateValue: validation['title_score']?.toString(),
+        result: scoreResult(validation['title_score']),
+        reason: 'Crossref/OpenAlex title similarity',
+      ),
+      FieldComparison(
+        field: 'author',
+        citationValue: reference['authors']?.toString(),
+        candidateValue: validation['author_score']?.toString(),
+        result: scoreResult(validation['author_score']),
+        reason: 'Author similarity',
+      ),
+      FieldComparison(
+        field: 'year',
+        citationValue: reference['year']?.toString(),
+        candidateValue: validation['year_match']?.toString(),
+        result: boolResult(validation['year_match']),
+        reason: 'Publication year comparison',
+      ),
+      FieldComparison(
+        field: 'doi',
+        citationValue: reference['doi']?.toString(),
+        candidateValue: validation['doi_valid']?.toString(),
+        result: boolResult(validation['doi_valid']),
+        reason: 'DOI resolution',
+      ),
+    ];
+  }
 }
+
