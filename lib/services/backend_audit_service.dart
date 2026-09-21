@@ -41,7 +41,7 @@ class BackendAuditService {
   BackendAuditService({
     Uri? baseUri,
     this.pollInterval = const Duration(seconds: 2),
-    this.pollTimeout = const Duration(minutes: 5),
+    this.pollTimeout = const Duration(minutes: 10),
     this.customClient,
   }) : baseUri = _withTrailingSlash(
           baseUri ?? Uri.parse(Environment.backendBaseUrl),
