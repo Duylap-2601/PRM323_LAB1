@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../core/app_messages.dart';
 import '../models/audit_result_item.dart';
 import '../models/enums.dart';
 
@@ -33,19 +35,28 @@ class _EvidencePanelState extends State<EvidencePanel> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFF24324D)),
               ),
-              child: const Icon(Icons.touch_app_outlined, size: 28, color: Color(0xFF64748B)),
+              child: const Icon(
+                Icons.touch_app_outlined,
+                size: 28,
+                color: Color(0xFF64748B),
+              ),
             ),
             const SizedBox(height: 14),
             const Text(
               'Chọn một citation bên trái để xem bằng chứng',
-              style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF94A3B8),
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
       );
     }
 
-    final statusStr = verificationStatusToJson(it.status) ??
+    final statusStr =
+        verificationStatusToJson(it.status) ??
         (it.processingState == ProcessingState.running ? 'running' : 'pending');
     final statusColor = _statusColor(statusStr);
 
@@ -68,7 +79,10 @@ class _EvidencePanelState extends State<EvidencePanel> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF162238),
                         borderRadius: BorderRadius.circular(5),
@@ -93,9 +107,17 @@ class _EvidencePanelState extends State<EvidencePanel> {
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF6D28D9),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                          textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          textStyle: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                         onPressed: _loading
                             ? null
@@ -106,7 +128,11 @@ class _EvidencePanelState extends State<EvidencePanel> {
                                 } catch (e) {
                                   if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Phân tích LLM thất bại: $e')),
+                                      SnackBar(
+                                        content: Text(
+                                          'Phân tích LLM thất bại: $e',
+                                        ),
+                                      ),
                                     );
                                   }
                                 } finally {
@@ -117,17 +143,27 @@ class _EvidencePanelState extends State<EvidencePanel> {
                             ? const SizedBox(
                                 width: 12,
                                 height: 12,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : const Icon(Icons.auto_awesome, size: 14),
-                        label: Text(_loading ? 'Đang phân tích…' : 'Phân tích lại LLM'),
+                        label: Text(
+                          _loading ? 'Đang phân tích…' : 'Phân tích lại LLM',
+                        ),
                       ),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Text(
                   it.metadata.title ?? it.citation,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFFF8FAFC), height: 1.3),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFF8FAFC),
+                    height: 1.3,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 // Raw Citation Block
@@ -142,23 +178,41 @@ class _EvidencePanelState extends State<EvidencePanel> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.format_quote_rounded, size: 16, color: Color(0xFF64748B)),
+                      const Icon(
+                        Icons.format_quote_rounded,
+                        size: 16,
+                        color: Color(0xFF64748B),
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: SelectableText(
                           it.metadata.raw,
-                          style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Color(0xFFCBD5E1), height: 1.4),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            color: Color(0xFFCBD5E1),
+                            height: 1.4,
+                          ),
                         ),
                       ),
                       IconButton(
                         tooltip: 'Sao chép raw citation',
-                        icon: const Icon(Icons.copy_rounded, size: 14, color: Color(0xFF64748B)),
+                        icon: const Icon(
+                          Icons.copy_rounded,
+                          size: 14,
+                          color: Color(0xFF64748B),
+                        ),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
                         onPressed: () {
-                          Clipboard.setData(ClipboardData(text: it.metadata.raw));
+                          Clipboard.setData(
+                            ClipboardData(text: it.metadata.raw),
+                          );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Đã sao chép chuỗi trích dẫn'), duration: Duration(seconds: 1)),
+                            const SnackBar(
+                              content: Text('Đã sao chép chuỗi trích dẫn'),
+                              duration: Duration(seconds: 1),
+                            ),
                           );
                         },
                       ),
@@ -181,18 +235,32 @@ class _EvidencePanelState extends State<EvidencePanel> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _SectionTitle(icon: Icons.info_outline, title: 'Thông tin trích xuất (Metadata)'),
+                const _SectionTitle(
+                  icon: Icons.info_outline,
+                  title: 'Thông tin trích xuất (Metadata)',
+                ),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 12,
                   runSpacing: 10,
                   children: [
-                    _MetaItem(label: 'Tác giả', value: it.metadata.authors ?? 'Chưa xác định'),
-                    _MetaItem(label: 'Năm xuất bản', value: it.metadata.year ?? '—'),
-                    _MetaItem(label: 'DOI', value: it.metadata.doi ?? 'Không có'),
+                    _MetaItem(
+                      label: 'Tác giả',
+                      value: it.metadata.authors ?? 'Chưa xác định',
+                    ),
+                    _MetaItem(
+                      label: 'Năm xuất bản',
+                      value: it.metadata.year ?? '—',
+                    ),
+                    _MetaItem(
+                      label: 'DOI',
+                      value: it.metadata.doi ?? 'Không có',
+                    ),
                     _MetaItem(
                       label: 'Trang nguồn',
-                      value: it.extraction.sourcePages.isEmpty ? '—' : 'Trang ${it.extraction.sourcePages.join(', ')}',
+                      value: it.extraction.sourcePages.isEmpty
+                          ? '—'
+                          : 'Trang ${it.extraction.sourcePages.join(', ')}',
                     ),
                   ],
                 ),
@@ -219,14 +287,22 @@ class _EvidencePanelState extends State<EvidencePanel> {
                     const SizedBox(width: 8),
                     Text(
                       'Đánh giá đối soát: ${_statusLabel(statusStr)}',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: statusColor),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: statusColor,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Text(
                   it.reason,
-                  style: const TextStyle(fontSize: 12, color: Color(0xFFE2E8F0), height: 1.4),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFFE2E8F0),
+                    height: 1.4,
+                  ),
                 ),
                 if (it.extraction.warnings.isNotEmpty) ...[
                   const SizedBox(height: 10),
@@ -234,7 +310,11 @@ class _EvidencePanelState extends State<EvidencePanel> {
                   const SizedBox(height: 8),
                   const Text(
                     'Cảnh báo trích xuất:',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFFBBF24)),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFBBF24),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   for (final w in it.extraction.warnings)
@@ -243,9 +323,18 @@ class _EvidencePanelState extends State<EvidencePanel> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('• ', style: TextStyle(color: Color(0xFFFBBF24))),
+                          const Text(
+                            '• ',
+                            style: TextStyle(color: Color(0xFFFBBF24)),
+                          ),
                           Expanded(
-                            child: Text(w, style: const TextStyle(fontSize: 11, color: Color(0xFFFDE68A))),
+                            child: Text(
+                              w,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFFFDE68A),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -269,17 +358,28 @@ class _EvidencePanelState extends State<EvidencePanel> {
               children: [
                 Row(
                   children: [
-                    const _SectionTitle(icon: Icons.find_in_page_outlined, title: 'Nguồn chứng cứ đối chiếu'),
+                    const _SectionTitle(
+                      icon: Icons.find_in_page_outlined,
+                      title: 'Nguồn chứng cứ đối chiếu',
+                    ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E293B),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         '${it.evidence.length}',
-                        style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Color(0xFF94A3B8), fontWeight: FontWeight.w700),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontFamily: 'monospace',
+                          color: Color(0xFF94A3B8),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],
@@ -288,7 +388,10 @@ class _EvidencePanelState extends State<EvidencePanel> {
                 if (it.evidence.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text('Không có bằng chứng đối chiếu trực tiếp từ API.', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                    child: Text(
+                      'Không có bằng chứng đối chiếu trực tiếp từ API.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
                   )
                 else
                   for (int idx = 0; idx < it.evidence.length; idx++) ...[
@@ -314,17 +417,28 @@ class _EvidencePanelState extends State<EvidencePanel> {
                 children: [
                   Row(
                     children: [
-                      const _SectionTitle(icon: Icons.history_rounded, title: 'Lịch sử truy vấn API'),
+                      const _SectionTitle(
+                        icon: Icons.history_rounded,
+                        title: 'Lịch sử truy vấn API',
+                      ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E293B),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           '${it.attempts.length}',
-                          style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Color(0xFF94A3B8), fontWeight: FontWeight.w700),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            color: Color(0xFF94A3B8),
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ],
@@ -333,7 +447,10 @@ class _EvidencePanelState extends State<EvidencePanel> {
                   for (final a in it.attempts)
                     Container(
                       margin: const EdgeInsets.only(bottom: 6),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF090E1A),
                         borderRadius: BorderRadius.circular(6),
@@ -343,14 +460,22 @@ class _EvidencePanelState extends State<EvidencePanel> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFF1E2B42),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
                               a.provider.toUpperCase(),
-                              style: const TextStyle(fontSize: 9, fontFamily: 'monospace', fontWeight: FontWeight.w700, color: Color(0xFF93C5FD)),
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF93C5FD),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -360,14 +485,21 @@ class _EvidencePanelState extends State<EvidencePanel> {
                               children: [
                                 Text(
                                   a.query,
-                                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Color(0xFFCBD5E1)),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                    color: Color(0xFFCBD5E1),
+                                  ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   'Kết quả: ${a.outcome}${a.errorCode != null ? ' (Mã: ${a.errorCode})' : ''}',
                                   style: TextStyle(
                                     fontSize: 10,
-                                    color: a.outcome.contains('found') || a.outcome.contains('ok') || a.outcome.contains('success')
+                                    color:
+                                        a.outcome.contains('found') ||
+                                            a.outcome.contains('ok') ||
+                                            a.outcome.contains('success')
                                         ? const Color(0xFF34D399)
                                         : const Color(0xFF94A3B8),
                                   ),
@@ -400,7 +532,12 @@ class _SectionTitle extends StatelessWidget {
       const SizedBox(width: 8),
       Text(
         title,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFF1F5F9), letterSpacing: 0.2),
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFFF1F5F9),
+          letterSpacing: 0.2,
+        ),
       ),
     ],
   );
@@ -423,9 +560,24 @@ class _MetaItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFF64748B), letterSpacing: 0.5)),
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF64748B),
+            letterSpacing: 0.5,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFFF1F5F9))),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFFF1F5F9),
+          ),
+        ),
       ],
     ),
   );
@@ -463,19 +615,64 @@ class _EvidenceCard extends StatelessWidget {
                 ),
                 child: Text(
                   '${e.provider}'.toUpperCase(),
-                  style: const TextStyle(fontSize: 10, fontFamily: 'monospace', fontWeight: FontWeight.w700, color: Color(0xFF93C5FD)),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF93C5FD),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'ID: ${e.id}',
-                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Color(0xFF94A3B8)),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: Color(0xFF94A3B8),
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (url != null && url.isNotEmpty)
+                IconButton(
+                  tooltip: 'Mở nguồn',
+                  icon: const Icon(
+                    Icons.open_in_new,
+                    size: 17,
+                    color: Color(0xFF60A5FA),
+                  ),
+                  onPressed: () async {
+                    final uri = Uri.tryParse(url);
+                    if (uri == null ||
+                        !await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        )) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(AppMessages.sourceLinkOpenFailed),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
             ],
           ),
+          if (meta['title'] != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              meta['title'].toString(),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFF1F5F9),
+              ),
+            ),
+          ],
           if (url != null && url.isNotEmpty) ...[
             const SizedBox(height: 6),
             Row(
@@ -485,10 +682,25 @@ class _EvidenceCard extends StatelessWidget {
                 Expanded(
                   child: SelectableText(
                     url,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF60A5FA), decoration: TextDecoration.underline),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF60A5FA),
+                      decoration: TextDecoration.underline,
+                    ),
                   ),
                 ),
               ],
+            ),
+          ],
+          if (meta['review_reason'] != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${AppMessages.reviewReasonPrefix} ${meta['review_reason']}',
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFFFBBF24),
+                height: 1.35,
+              ),
             ),
           ],
           if (snippet != null && snippet.isNotEmpty) ...[
@@ -498,11 +710,18 @@ class _EvidenceCard extends StatelessWidget {
               decoration: const BoxDecoration(
                 color: Color(0xFF050810),
                 borderRadius: BorderRadius.all(Radius.circular(4)),
-                border: Border(left: BorderSide(color: Color(0xFF3B82F6), width: 3)),
+                border: Border(
+                  left: BorderSide(color: Color(0xFF3B82F6), width: 3),
+                ),
               ),
               child: Text(
                 snippet,
-                style: const TextStyle(fontSize: 11, color: Color(0xFFCBD5E1), fontStyle: FontStyle.italic, height: 1.4),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFFCBD5E1),
+                  fontStyle: FontStyle.italic,
+                  height: 1.4,
+                ),
               ),
             ),
           ],
@@ -517,7 +736,10 @@ class _EvidenceCard extends StatelessWidget {
                 if (meta['confidence'] != null)
                   _TagPill(label: 'confidence', value: '${meta['confidence']}'),
                 if (meta['title_score'] != null)
-                  _TagPill(label: 'title_score', value: '${meta['title_score']}'),
+                  _TagPill(
+                    label: 'title_score',
+                    value: '${meta['title_score']}',
+                  ),
                 if (meta['conclusion'] != null)
                   _TagPill(label: 'conclusion', value: '${meta['conclusion']}'),
               ],
@@ -544,7 +766,11 @@ class _TagPill extends StatelessWidget {
     ),
     child: Text(
       '$label: $value',
-      style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Color(0xFF93C5FD)),
+      style: const TextStyle(
+        fontSize: 10,
+        fontFamily: 'monospace',
+        color: Color(0xFF93C5FD),
+      ),
     ),
   );
 }
@@ -570,23 +796,21 @@ class _StatusBadge extends StatelessWidget {
 }
 
 Color _statusColor(String status) => switch (status) {
-      'verified' => const Color(0xFF34D399),
-      'mismatch' => const Color(0xFFFBBF24),
-      'error' => const Color(0xFFF87171),
-      'needs_review' => const Color(0xFFC084FC),
-      'running' => const Color(0xFF60A5FA),
-      _ => const Color(0xFF94A3B8),
-    };
+  'verified' => const Color(0xFF34D399),
+  'mismatch' => const Color(0xFFFBBF24),
+  'error' => const Color(0xFFF87171),
+  'needs_review' => const Color(0xFFC084FC),
+  'running' => const Color(0xFF60A5FA),
+  _ => const Color(0xFF94A3B8),
+};
 
 String _statusLabel(String status) => switch (status) {
-      'verified' => 'Đã xác minh',
-      'mismatch' => 'Sai lệch',
-      'needs_review' => 'Cần xem lại',
-      'not_found' => 'Không tìm thấy',
-      'error' => 'Lỗi',
-      'running' => 'Đang xác minh',
-      'pending' => 'Đang chờ',
-      _ => status,
-    };
-
-
+  'verified' => 'Đã xác minh',
+  'mismatch' => 'Sai lệch',
+  'needs_review' => 'Cần xem lại',
+  'not_found' => 'Không tìm thấy',
+  'error' => 'Lỗi',
+  'running' => 'Đang xác minh',
+  'pending' => 'Đang chờ',
+  _ => status,
+};

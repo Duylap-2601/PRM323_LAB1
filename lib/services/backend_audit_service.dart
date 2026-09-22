@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../core/environment.dart';
+import '../core/app_messages.dart';
 import '../models/audit_result_item.dart';
 import '../models/citation.dart';
 import '../models/enums.dart';
@@ -44,8 +45,8 @@ class BackendAuditService {
     this.pollTimeout = const Duration(minutes: 10),
     this.customClient,
   }) : baseUri = _withTrailingSlash(
-          baseUri ?? Uri.parse(Environment.backendBaseUrl),
-        );
+         baseUri ?? Uri.parse(Environment.backendBaseUrl),
+       );
 
   static Uri _withTrailingSlash(Uri uri) =>
       uri.path.endsWith('/') ? uri : uri.replace(path: '${uri.path}/');
@@ -64,10 +65,12 @@ class BackendAuditService {
       final health = await _activeClient!.get(_healthUri, headers: _headers);
       _decodeHealth(health.statusCode, health.body);
       onProgress('uploading', 'Đang gửi PDF tới máy chủ…');
-      final upload = http.MultipartRequest(
-          'POST', baseUri.resolve('documents/upload'))
-        ..headers.addAll(_headers)
-        ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+      final upload =
+          http.MultipartRequest('POST', baseUri.resolve('documents/upload'))
+            ..headers.addAll(_headers)
+            ..files.add(
+              http.MultipartFile.fromBytes('file', bytes, filename: filename),
+            );
       final streamed = await _activeClient!.send(upload);
       final uploadBody = await streamed.stream.bytesToString();
       final uploadJson = _decode(streamed.statusCode, uploadBody);
@@ -105,7 +108,9 @@ class BackendAuditService {
       // Poll status if backend returned non-terminal status
       while (status == 'uploaded' || status == 'processing') {
         if (DateTime.now().difference(startTime) > pollTimeout) {
-          throw StateError('Thao tác quá thời gian chờ (timeout $pollTimeout).');
+          throw StateError(
+            'Thao tác quá thời gian chờ (timeout $pollTimeout).',
+          );
         }
         await Future.delayed(pollInterval);
         final statusResp = await client.get(
@@ -167,16 +172,20 @@ class BackendAuditService {
       }
       throw StateError('Máy chủ trả dữ liệu không hợp lệ (HTTP $statusCode).');
     }
-    final json = decoded is Map ? Map<String, dynamic>.from(decoded) : <String, dynamic>{};
+    final json = decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : <String, dynamic>{};
     if (statusCode < 200 || statusCode >= 300) {
       String msg = 'Máy chủ trả HTTP $statusCode.';
       if (json['message'] is String && (json['message'] as String).isNotEmpty) {
         msg = json['message'] as String;
-      } else if (json['detail'] is String && (json['detail'] as String).isNotEmpty) {
+      } else if (json['detail'] is String &&
+          (json['detail'] as String).isNotEmpty) {
         msg = json['detail'] as String;
       } else if (json['detail'] is Map && json['detail']['message'] is String) {
         msg = json['detail']['message'] as String;
-      } else if (json['error'] is String && (json['error'] as String).isNotEmpty) {
+      } else if (json['error'] is String &&
+          (json['error'] as String).isNotEmpty) {
         msg = json['error'] as String;
       }
       throw StateError(msg);
@@ -196,17 +205,25 @@ class BackendAuditService {
   }
 
   BackendRunResult _mapReport(String filename, Map<String, dynamic> report) {
-    final refs = report['references'] is List ? report['references'] as List : const [];
-    final validations = report['validations'] is List ? report['validations'] as List : const [];
+    final refs = report['references'] is List
+        ? report['references'] as List
+        : const [];
+    final validations = report['validations'] is List
+        ? report['validations'] as List
+        : const [];
     final validationById = <String, Map<String, dynamic>>{
       for (final item in validations)
-        if (item is Map) item['reference_id']?.toString() ?? '': Map<String, dynamic>.from(item),
+        if (item is Map)
+          item['reference_id']?.toString() ?? '': Map<String, dynamic>.from(
+            item,
+          ),
     };
     final items = <AuditResultItem>[];
     for (var index = 0; index < refs.length; index++) {
       if (refs[index] is! Map) continue;
       final reference = Map<String, dynamic>.from(refs[index] as Map);
-      final validation = validationById[reference['id']?.toString()] ?? const {};
+      final validation =
+          validationById[reference['id']?.toString()] ?? const {};
       final serverStatus = validation['status']?.toString() ?? 'NOT_FOUND';
       final status = switch (serverStatus) {
         'VALID' => VerificationStatus.verified,
@@ -217,6 +234,7 @@ class BackendAuditService {
       final notes = validation['notes'] is List
           ? (validation['notes'] as List).map((e) => e.toString()).toList()
           : <String>[];
+      final reviewReason = validation['review_reason']?.toString();
       final authors = reference['authors'] is List
           ? (reference['authors'] as List).join(', ')
           : null;
@@ -237,49 +255,69 @@ class BackendAuditService {
         url: url ?? (doi == null ? null : 'https://doi.org/$doi'),
         metadataMethod: 'fastapi',
       );
-      items.add(AuditResultItem(
-        index: index,
-        citation: metadata.raw,
-        pred: status == VerificationStatus.verified ? true : false,
-        processingState: ProcessingState.completed,
-        status: status,
-        method: 'fastapi_crossref',
-        reason: notes.isEmpty ? _statusMessage(serverStatus) : notes.join(' · '),
-        extraction: ExtractionInfo(
-          sourcePages: reference['page'] is num ? [(reference['page'] as num).toInt()] : const [],
-          metadataMethod: 'fastapi',
+      items.add(
+        AuditResultItem(
+          index: index,
+          citation: metadata.raw,
+          pred: status == VerificationStatus.verified ? true : false,
+          processingState: ProcessingState.completed,
+          status: status,
+          method: 'fastapi_crossref',
+          reason: _reasonForStatus(serverStatus, reviewReason, notes),
+          extraction: ExtractionInfo(
+            sourcePages: reference['page'] is num
+                ? [(reference['page'] as num).toInt()]
+                : const [],
+            metadataMethod: 'fastapi',
+          ),
+          metadata: metadata,
+          found: status != VerificationStatus.notFound,
+          match: status == VerificationStatus.verified
+              ? true
+              : status == VerificationStatus.mismatch
+              ? false
+              : null,
+          matchedEvidenceId: evidence.isNotEmpty ? evidence.first.id : null,
+          evidence: evidence,
+          fieldComparisons: _fieldComparisonsFromValidation(
+            reference: reference,
+            validation: validation,
+          ),
         ),
-        metadata: metadata,
-        found: status != VerificationStatus.notFound,
-        match: status == VerificationStatus.verified
-            ? true
-            : status == VerificationStatus.mismatch
-                ? false
-                : null,
-        matchedEvidenceId: evidence.isNotEmpty ? evidence.first.id : null,
-        evidence: evidence,
-        fieldComparisons: _fieldComparisonsFromValidation(
-          reference: reference,
-          validation: validation,
-        ),
-      ));
+      );
     }
     final issues = report['issues'] is List
-        ? [for (final issue in report['issues'] as List) if (issue is Map) issue['message']?.toString() ?? '']
+        ? [
+            for (final issue in report['issues'] as List)
+              if (issue is Map) issue['message']?.toString() ?? '',
+          ]
         : <String>[];
-    return BackendRunResult(sourceLabel: filename, items: items, warnings: issues.where((e) => e.isNotEmpty).toList());
+    return BackendRunResult(
+      sourceLabel: filename,
+      items: items,
+      warnings: issues.where((e) => e.isNotEmpty).toList(),
+    );
   }
 
-  String _statusMessage(String status) => switch (status) {
-        'VALID' => 'Thông tin khớp với nguồn Crossref.',
-        'MISMATCH' => 'Thông tin khác với nguồn Crossref.',
-        'NOT_FOUND' => 'Không tìm thấy nguồn phù hợp trên Crossref.',
-        'PARTIAL' => 'Bằng chứng chưa đủ để xác minh hoàn toàn.',
-        'AMBIGUOUS' => 'Có nhiều nguồn gần khớp, cần xem lại.',
-        _ => 'Máy chủ chưa trả kết luận.',
-      };
+  String _statusMessage(String status) =>
+      AppMessages.validationStatusMessage(status);
 
-  Future<AuditResultItem> reanalyzeReferenceWithLlm(AuditResultItem item) async {
+  String _reasonForStatus(
+    String status,
+    String? reviewReason,
+    List<String> notes,
+  ) {
+    if (status != 'VALID' &&
+        reviewReason != null &&
+        reviewReason.trim().isNotEmpty) {
+      return '${_statusMessage(status)} ${reviewReason.trim()}';
+    }
+    return notes.isEmpty ? _statusMessage(status) : notes.join(' · ');
+  }
+
+  Future<AuditResultItem> reanalyzeReferenceWithLlm(
+    AuditResultItem item,
+  ) async {
     final uri = baseUri.resolve('documents/reanalyze_reference');
     final payload = jsonEncode({
       'reference_id': 'ref-${item.index + 1}',
@@ -291,16 +329,17 @@ class BackendAuditService {
     });
 
     final client = customClient ?? http.Client();
-    final res = await client.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: payload,
-    ).timeout(const Duration(seconds: 25));
-
+    final res = await client
+        .post(uri, headers: {'Content-Type': 'application/json'}, body: payload)
+        .timeout(const Duration(seconds: 25));
 
     final json = jsonDecode(res.body) as Map<String, dynamic>;
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw StateError(json['message']?.toString() ?? json['detail']?.toString() ?? 'Lỗi khi gọi LLM re-analyze');
+      throw StateError(
+        json['message']?.toString() ??
+            json['detail']?.toString() ??
+            'Lỗi khi gọi LLM re-analyze',
+      );
     }
 
     final val = json['validation'] as Map<String, dynamic>? ?? {};
@@ -311,6 +350,7 @@ class BackendAuditService {
     final notes = val['notes'] is List
         ? (val['notes'] as List).map((e) => e.toString()).toList()
         : <String>[];
+    final reviewReason = val['review_reason']?.toString();
     if (llmReasoning != null && llmReasoning.isNotEmpty) {
       notes.insert(0, llmReasoning);
     }
@@ -325,7 +365,8 @@ class BackendAuditService {
       _ => VerificationStatus.needsReview,
     };
 
-    final authors = ref['authors'] is List && (ref['authors'] as List).isNotEmpty
+    final authors =
+        ref['authors'] is List && (ref['authors'] as List).isNotEmpty
         ? (ref['authors'] as List).join(', ')
         : item.metadata.authors;
     final title = ref['title']?.toString() ?? item.metadata.title;
@@ -347,8 +388,7 @@ class BackendAuditService {
     final reasonParts = [
       if (llmConclusion != null && llmConclusion.isNotEmpty)
         'LLM: $llmConclusion',
-      if (llmReasoning != null && llmReasoning.isNotEmpty)
-        llmReasoning,
+      if (llmReasoning != null && llmReasoning.isNotEmpty) llmReasoning,
       if (notes.isEmpty) _statusMessage(serverStatus) else notes.join(' · '),
     ];
 
@@ -358,10 +398,12 @@ class BackendAuditService {
       status: status,
       pred: status == VerificationStatus.verified ? true : false,
       processingState: ProcessingState.completed,
-      reason: notes.isEmpty ? _statusMessage(serverStatus) : notes.join(' · '),
+      reason: _reasonForStatus(serverStatus, reviewReason, notes),
       metadata: updatedMetadata,
       found: status != VerificationStatus.notFound,
-      match: status == VerificationStatus.verified ? true : (status == VerificationStatus.mismatch ? false : null),
+      match: status == VerificationStatus.verified
+          ? true
+          : (status == VerificationStatus.mismatch ? false : null),
       matchedEvidenceId: evidence.isNotEmpty ? evidence.first.id : null,
       evidence: evidence,
       fieldComparisons: _fieldComparisonsFromValidation(
@@ -382,15 +424,22 @@ class BackendAuditService {
         : const <String>[];
     final doi = reference['doi']?.toString();
     final refUrl = reference['url']?.toString();
-    final provider = notes.any((note) => note.toLowerCase().contains('openalex'))
-        ? 'openalex'
-        : notes.any((note) => note.toLowerCase().contains('url'))
+    final sourceProvider = validation['source_provider']?.toString();
+    final sourceUrl = validation['source_url']?.toString();
+    final sourceTitle = validation['source_title']?.toString();
+    final provider =
+        sourceProvider ??
+        (notes.any((note) => note.toLowerCase().contains('openalex'))
+            ? 'openalex'
+            : notes.any((note) => note.toLowerCase().contains('url'))
             ? 'url'
-            : 'crossref';
+            : 'crossref');
     final id = doi != null && doi.isNotEmpty
         ? doi
         : '${reference['id']?.toString() ?? 'reference'}-$provider-$status';
-    final url = doi != null && doi.isNotEmpty
+    final url = sourceUrl != null && sourceUrl.isNotEmpty
+        ? sourceUrl
+        : doi != null && doi.isNotEmpty
         ? 'https://doi.org/$doi'
         : refUrl;
 
@@ -406,10 +455,11 @@ class BackendAuditService {
           'author_score': validation['author_score'],
           'year_match': validation['year_match'],
           'doi_valid': validation['doi_valid'],
-          'title': reference['title'],
+          'title': sourceTitle ?? reference['title'],
           'authors': reference['authors'],
           'year': reference['year'],
           'notes': notes,
+          'review_reason': validation['review_reason'],
         },
         snippet: notes.isEmpty ? _statusMessage(status) : notes.join(' · '),
       ),
@@ -469,4 +519,3 @@ class BackendAuditService {
     ];
   }
 }
-
