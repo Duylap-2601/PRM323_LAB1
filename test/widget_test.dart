@@ -61,6 +61,7 @@ void main() {
     expect(controller.workingItems, isNotEmpty);
     expect(controller.report, isNotNull);
     expect(find.text('Danh sách trích dẫn'), findsOneWidget);
+    expect(find.text('Xuất JSON'), findsOneWidget);
 
     documents.next = null;
     final previousItems = controller.workingItems;

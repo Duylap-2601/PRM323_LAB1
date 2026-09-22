@@ -28,6 +28,23 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
     super.dispose();
   }
 
+  Future<void> _exportJson(BuildContext context) async {
+    final report = widget.controller.report;
+    if (report == null) return;
+    try {
+      final uri = await widget.controller.exporter.exportV2(report);
+      if (!context.mounted || uri == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã xuất JSON: ${uri.toFilePath()}')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể xuất JSON: $error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = widget.controller;
@@ -63,18 +80,19 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
         onFilter: (value) => setState(() => filter = value),
         onQuery: (value) => setState(() => query = value),
         onReanalyzeAll: c.busy ? null : () => c.reanalyzeAllNeedsReviewWithLlm(),
+        onExportJson: c.report == null ? null : () => _exportJson(context),
       );
       final detail = _DetailPanel(
         item: current,
         showJson: showJson,
         reportJson: c.report == null
             ? null
-            : const JsonEncoder.withIndent('  ').convert(c.report!.toLegacyJson()),
+            : const JsonEncoder.withIndent('  ').convert(c.report!.toV2Json()),
         onTabChanged: (json) => setState(() => showJson = json),
         onSave: c.report == null
             ? null
             : () async {
-                await c.exporter.exportLegacy(c.report!);
+                await _exportJson(context);
               },
         onReanalyzeLlm: (item) => c.reanalyzeItemWithLlm(item),
       );
@@ -99,6 +117,7 @@ class _CitationList extends StatelessWidget {
   final ValueChanged<String> onFilter;
   final ValueChanged<String> onQuery;
   final VoidCallback? onReanalyzeAll;
+  final VoidCallback? onExportJson;
 
   const _CitationList({
     required this.items,
@@ -111,6 +130,7 @@ class _CitationList extends StatelessWidget {
     required this.onFilter,
     required this.onQuery,
     this.onReanalyzeAll,
+    this.onExportJson,
   });
 
   @override
@@ -121,8 +141,17 @@ class _CitationList extends StatelessWidget {
           title: 'Danh sách trích dẫn',
           count: items.length,
           totalCount: totalCount,
-          action: onReanalyzeAll != null
-              ? Tooltip(
+          action: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (onExportJson != null)
+                OutlinedButton.icon(
+                  onPressed: onExportJson,
+                  icon: const Icon(Icons.download_rounded, size: 14),
+                  label: const Text('Xuất JSON'),
+                ),
+              if (onExportJson != null && onReanalyzeAll != null) const SizedBox(width: 8),
+              if (onReanalyzeAll != null) Tooltip(
                   message: 'Dùng LLM phân tích lại tất cả mục cần xem lại',
                   child: FilledButton.icon(
                     style: FilledButton.styleFrom(
@@ -135,8 +164,9 @@ class _CitationList extends StatelessWidget {
                     icon: const Icon(Icons.auto_awesome, size: 13),
                     label: const Text('Phân tích LLM', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                   ),
-                )
-              : null,
+                ),
+            ],
+          ),
         ),
         // Search & Filter Bar
         Padding(
